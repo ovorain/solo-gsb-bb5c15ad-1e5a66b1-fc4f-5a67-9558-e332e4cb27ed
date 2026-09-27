@@ -84,6 +84,17 @@ docker compose down
 
 `detents`（可选）为设备档位约束：`{enabled:true, steps:2～360 的整数, offsetDeg?:数值角度}`；缺省或 `enabled:false` 时行为不变（返回 `detents:{enabled:false}`）。启用后返回：
 
+### 圆周区间表示约定（0°/360° 统一）
+
+单规格 `feasible[]` 与多规格 `common[]` 的弧段采用同一套表示：
+
+- 普通不跨零弧：`{startDeg, endDeg, wraps:false}`，`0 ≤ startDeg ≤ endDeg ≤ 360`。弧段**恰好结束在整圈边界**时末端写作 `360`（不模回 `0`），如安全段 90°→360°；恰从零点开始时起点写作 `0` 且不标记跨零。
+- 真正跨零弧：`{startDeg, endDeg, wraps:true}`，从 `startDeg` 沿正向越过 0° 到 `endDeg`，宽度由 `widthDeg` 给出。
+- 整圈可行：`{full:true, startDeg:0, endDeg:0, widthDeg:360}`。
+- `0°` 与 `360°` 为同一圆周点，均按弧端点处理（含边界）。单规格与多规格接口在可行段、可用档位、默认角度与调机路径上的判定保持一致。
+
+启用档位后返回：
+
 - `detents.steps / offsetDeg / stepDeg / positions`：档位参数与全部档位角度；
 - `detents.available`：全部可用档位。单规格每项 `{index, deg, mm, gapDeg}`；多规格每项 `{index, deg, minGapDeg, gaps:[各规格间隙]}`；
 - 单规格 `best` 取最优可用档位（附 `detentIndex`）；多规格 `best` 同理；

@@ -270,7 +270,57 @@ test('computeSeamAvoidance + 档位：无禁用区时全部档位可用，默认
   assert.equal(r.detents.available[0].gapDeg, null);
 });
 
-test('computeSeamAvoidance：关闭档位时行为与字段保持兼容', () => {
+test('computeSeamAvoidance + 档位：可行段结束在整圈边界时 0° 档位可用（不误报无档位）', () => {
+  // C=360、W=0、保护区 [0,90] → 可行段 90°→360°；12 档 0,30,...,330
+  // 可用档位为端点 90/0 及段内 120..330，共 10 档
+  const r = computeSeamAvoidance(360, 0, [{ start: 0, end: 90 }], {
+    enabled: true,
+    steps: 12,
+  });
+  assert.equal(r.noSolution, false);
+  assert.equal(r.detents.noAvailable, false);
+  assert.deepEqual(
+    r.detents.available.map((d) => d.deg),
+    [0, 90, 120, 150, 180, 210, 240, 270, 300, 330]
+  );
+  // 段中点方向：210° 距两端各 120°，为瓶颈间隙最大档位
+  assert.equal(r.detents.best.deg, 210);
+  assert.equal(r.best.deg, 210);
+  assert.equal(r.best.detentIndex, 7);
+});
+
+test('computeSeamAvoidance + 档位：可行段从零点开始时只含段内档位', () => {
+  // C=360、W=0、保护区 [90,360] → 可行段 0°→90°；12 档中仅 0/30/60/90 可用
+  const r = computeSeamAvoidance(360, 0, [{ start: 90, end: 360 }], {
+    enabled: true,
+    steps: 12,
+  });
+  assert.equal(r.detents.noAvailable, false);
+  assert.deepEqual(
+    r.detents.available.map((d) => d.deg),
+    [0, 30, 60, 90]
+  );
+  // 30° 与 60° 间隙均为 30°，取较小角度 30°
+  assert.equal(r.detents.best.deg, 30);
+});
+
+test('computeSeamAvoidance + 档位：真正跨零可行段的档位求交', () => {
+  // C=400、保护区 [100,300]mm（90°→270°）→ 跨零可行段 270°→90°；
+  // 12 档中 270/300/330/0/30/60/90 共 7 档可用
+  const r = computeSeamAvoidance(400, 0, [{ start: 100, end: 300 }], {
+    enabled: true,
+    steps: 12,
+  });
+  assert.equal(r.detents.noAvailable, false);
+  assert.deepEqual(
+    r.detents.available.map((d) => d.deg),
+    [0, 30, 60, 90, 270, 300, 330]
+  );
+  // 跨零段中点 0° 距两端 90°，为默认档位
+  assert.equal(r.detents.best.deg, 0);
+});
+
+test('computeSeamAvoidance + 档位：关闭档位时行为与字段保持兼容', () => {
   const r = computeSeamAvoidance(400, 20, [
     { start: 60, end: 120 },
     { start: 200, end: 260 },

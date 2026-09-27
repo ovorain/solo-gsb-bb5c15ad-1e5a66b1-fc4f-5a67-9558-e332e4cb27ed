@@ -342,11 +342,19 @@ function renderRoute() {
 
 /* ---------------- 档位结果辅助 ---------------- */
 
-/** 角度 deg 是否落在弧 arc 内（含边界）。 */
+/**
+ * 角度 deg 是否落在弧 arc 内（含边界）。与服务端 routePlan.degInArc 一致：
+ * 从弧起点沿正向的偏移量不超过弧宽即在弧上，统一处理跨零与 0°/360° 端点。
+ */
 function degInArc(deg, arc) {
   if (!arc || arc.full) return true;
-  if (arc.wraps) return deg >= arc.startDeg - 1e-9 || deg <= arc.endDeg + 1e-9;
-  return deg >= arc.startDeg - 1e-9 && deg <= arc.endDeg + 1e-9;
+  const width =
+    arc.widthDeg !== undefined
+      ? arc.widthDeg
+      : (arc.wraps ? arc.endDeg + 360 : arc.endDeg) - arc.startDeg;
+  if (width <= 1e-9) return false; // 零宽退化弧
+  if (width >= 360 - 1e-9) return true; // 整圈
+  return mod(deg - mod(arc.startDeg, 360), 360) <= width + 1e-9;
 }
 
 /** 弧内可用档位中按“瓶颈间隙最大、角度较小”选出的档位。 */
@@ -532,9 +540,12 @@ function markActiveSegment() {
   const C = r.circumference;
   [...$('feasibleList').children].forEach((li, i) => {
     const s = r.feasible[i];
-    const eMm = s.wraps ? s.endMm + C : s.endMm;
+    const lift = liftedFeasibleMm(s, C);
     const t = state.thetaMm;
-    li.classList.toggle('active', (t >= s.startMm && t <= eMm) || (t + C >= s.startMm && t + C <= eMm));
+    const active = !lift
+      ? true // 整圈可行：任意接缝位置均属该段
+      : (t >= lift[0] && t <= lift[1]) || (t + C >= lift[0] && t + C <= lift[1]);
+    li.classList.toggle('active', active);
   });
 }
 
@@ -789,6 +800,12 @@ function renderMultiLegend() {
 
 /* ---------------- 吸附 ---------------- */
 
+/** 将单规格可行弧视为提升区间 [startMm, end]（跨零 end 加 C；整圈返回 null）。 */
+function liftedFeasibleMm(s, C) {
+  if (s.full || (s.widthMm !== undefined && s.widthMm >= C - 1e-9)) return null;
+  return [s.startMm, s.wraps ? s.endMm + C : s.endMm];
+}
+
 /** 将角度 m (mm) 吸附到最近可行位置；无解时返回 null。启用档位时仅吸附到可用档位。 */
 function snapToFeasible(m) {
   const r = state.result;
@@ -798,8 +815,10 @@ function snapToFeasible(m) {
 
   const inGap = (x) =>
     r.feasible.some((s) => {
-      const e = s.wraps ? s.endMm + C : s.endMm;
-      return (x >= s.startMm && x <= e) || (x + C >= s.startMm && x + C <= e);
+      const lift = liftedFeasibleMm(s, C);
+      if (!lift) return true; // 整圈可行
+      const [a, b] = lift;
+      return (x >= a && x <= b) || (x + C >= a && x + C <= b);
     });
 
   // 设备档位约束：只能落在可用档位上，取圆周距离最近（并列取较小角度）
@@ -825,8 +844,10 @@ function snapToFeasible(m) {
 
   let best = null;
   for (const s of r.feasible) {
-    const e = s.wraps ? s.endMm + C : s.endMm;
-    for (const cand of [mod(s.startMm, C), mod(e, C)]) {
+    const lift = liftedFeasibleMm(s, C);
+    if (!lift) return m; // 整圈可行：任意位置均可
+    const [a, b] = lift;
+    for (const cand of [mod(a, C), mod(b, C)]) {
       const d = Math.min(Math.abs(cand - m), C - Math.abs(cand - m));
       if (!best || d < best.d) best = { d, v: cand };
     }

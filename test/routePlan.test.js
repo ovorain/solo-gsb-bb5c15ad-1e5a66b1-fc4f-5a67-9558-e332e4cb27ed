@@ -51,6 +51,56 @@ test('planRoute: 跨零弧上的顺时针路径', () => {
   approx(r2.best.sweepDeg, 20);
 });
 
+test('单规格集成：可行段结束在整圈边界时调机路径与可用档位一致', () => {
+  // 题设：C=360、W=0、保护区 [0,90]，可行 90°→360°，12 档
+  const r = computeSeamAvoidance(
+    360,
+    0,
+    [{ start: 0, end: 90 }],
+    { enabled: true, steps: 12 },
+    { fromDeg: 330, toDeg: 0 }
+  );
+  assert.equal(r.route.status, 'ok');
+  assert.equal(r.route.best.direction, 'cw');
+  approx(r.route.best.sweepDeg, 30);
+  assert.equal(r.route.from.safe, true);
+  assert.equal(r.route.to.safe, true);
+  assert.equal(r.route.from.onDetent, true);
+  assert.equal(r.route.to.onDetent, true);
+
+  // 0° 为端点档位；30° 在禁用段内，端点不安全
+  const r2 = computeSeamAvoidance(
+    360,
+    0,
+    [{ start: 0, end: 90 }],
+    { enabled: true, steps: 12 },
+    { fromDeg: 0, toDeg: 30 }
+  );
+  assert.equal(r2.route.status, 'unsafe-endpoint');
+});
+
+test('planRoute: 末端 360° 的弧上，0° 视为该段端点且路径可达', () => {
+  // 90°→360° 不跨零：0° 与 360° 为同一圆周点
+  const arc = { startDeg: 90, endDeg: 360, wraps: false, widthDeg: 270 };
+  const arcs = [arc];
+  assert.equal(degInArc(0, arc), true);
+  // 330→0：顺时针 30°（段内），逆时针 330° 越界
+  const r = planRoute(330, 0, arcs, null);
+  assert.equal(r.status, 'ok');
+  assert.equal(r.best.direction, 'cw');
+  approx(r.best.sweepDeg, 30);
+  assert.equal(r.cw.reachable, true);
+  assert.equal(r.ccw.reachable, false);
+  // 0→330：只能逆时针 30°
+  const r2 = planRoute(0, 330, arcs, null);
+  assert.equal(r2.status, 'ok');
+  assert.equal(r2.best.direction, 'ccw');
+  approx(r2.best.sweepDeg, 30);
+  // 禁用段内的 45° 不安全
+  const r3 = planRoute(90, 45, arcs, null);
+  assert.equal(r3.status, 'unsafe-endpoint');
+});
+
 test('planRoute: 整圈可行时两方向均可达，选较短者', () => {
   const full = [{ startDeg: 0, endDeg: 0, wraps: false, widthDeg: 360, full: true }];
   const r = planRoute(10, 100, full, null); // 顺 90 / 逆 270

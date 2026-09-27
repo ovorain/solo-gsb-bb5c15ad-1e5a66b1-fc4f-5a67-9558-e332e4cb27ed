@@ -25,6 +25,15 @@ function arcsToPairs(arcs) {
   return arcs.map((a) => [a.startDeg, a.endDeg]);
 }
 
+test('feasibleDegPieces: 可行段结束在整圈边界时保持 360° 表示（不归零）', () => {
+  // 周长 360、W=0、保护区 [0,90] → 可行段 90°→360°（不跨零）
+  const r = computeSeamAvoidance(360, 0, [{ start: 0, end: 90 }]);
+  assert.deepEqual(feasibleDegPieces(r), [[90, 360]]);
+  // 反向边界：可行段从零点开始 0°→90°
+  const r2 = computeSeamAvoidance(360, 0, [{ start: 90, end: 360 }]);
+  assert.deepEqual(feasibleDegPieces(r2), [[0, 90]]);
+});
+
 test('feasibleDegPieces: 跨零可行段拆为两段，整圈/无解正确', () => {
   // C=400 W=20 保护区 [60,120] → 禁用 36°–108°，可行段跨零（108°→36°）
   const r = computeSeamAvoidance(400, 20, [{ start: 60, end: 120 }]);
@@ -170,6 +179,35 @@ test('computeMultiSpec: 所有规格均无禁用区时整圈公共、默认 0°'
     r.best.gaps.map((g) => g.gapDeg),
     [null, null]
   );
+});
+
+test('computeMultiSpec: 公共安全段结束在整圈边界时与单规格表示一致', () => {
+  // 两相同 C=360 规格，W=0，保护区 [0,90] → 共用段 90°→360°，不跨零
+  const r = computeMultiSpec(
+    [360, 360],
+    0,
+    [{ start: 0, end: 90 }],
+    { enabled: true, steps: 12 },
+    { fromDeg: 330, toDeg: 0 }
+  );
+  assert.equal(r.noSolution, false);
+  assert.equal(r.common.length, 1);
+  assert.deepEqual(
+    r.common.map((a) => [a.startDeg, a.endDeg, a.wraps]),
+    [[90, 360, false]]
+  );
+  // 与单规格接口一致：0° 档位可用（端点），不误报无可用档位
+  assert.equal(r.detents.noAvailable, false);
+  assert.deepEqual(
+    r.detents.available.map((d) => d.deg),
+    [0, 90, 120, 150, 180, 210, 240, 270, 300, 330]
+  );
+  assert.equal(r.detents.best.deg, 210);
+  assert.equal(r.best.deg, 210);
+  // 调机路径：330°→0° 顺时针 30° 全程安全且两端在可用档位上
+  assert.equal(r.route.status, 'ok');
+  assert.equal(r.route.best.direction, 'cw');
+  approx(r.route.best.sweepDeg, 30);
 });
 
 test('computeMultiSpec: 无共同解时报告首次归零的规格与冲突区间', () => {

@@ -143,5 +143,51 @@ test('computeSeamAvoidance: 无保护区时整圈可行，默认 0°', () => {
   assert.equal(r.noSolution, false);
   assert.equal(r.feasible.length, 1);
   assert.equal(r.feasible[0].widthMm, 400);
+  assert.equal(r.feasible[0].full, true);
   assert.equal(r.best.mm, 0);
+});
+
+test('computeSeamAvoidance: 可行段恰好结束在整圈边界时 endDeg 取 360 而非 0', () => {
+  // 周长 360、W=0、保护区 [0,90] → 安全段为 90°→360°（不跨零）
+  const r = computeSeamAvoidance(360, 0, [{ start: 0, end: 90 }]);
+  assert.equal(r.noSolution, false);
+  assert.equal(r.feasible.length, 1);
+  const f = r.feasible[0];
+  assert.equal(f.startDeg, 90);
+  assert.equal(f.endDeg, 360);
+  assert.equal(f.startMm, 90);
+  assert.equal(f.endMm, 360);
+  assert.equal(f.widthDeg, 270);
+  assert.equal(f.wraps, false);
+  assert.equal(f.full, undefined);
+  // 默认角度为该段中点 225°
+  assert.equal(r.best.deg, 225);
+  assert.equal(r.best.mm, 225);
+  // 0° 是该段在整圈边界处的端点，属安全点
+  assert.deepEqual(
+    r.feasible.map((g) => [g.startMm, g.wraps ? g.endMm + r.circumference : g.endMm]),
+    [[90, 360]]
+  );
+});
+
+test('computeSeamAvoidance: 可行段恰从零点开始时不标跨零', () => {
+  // 保护区 [90,360] → 安全段 0°→90°（不跨零）
+  const r = computeSeamAvoidance(360, 0, [{ start: 90, end: 360 }]);
+  assert.equal(r.feasible.length, 1);
+  const f = r.feasible[0];
+  assert.deepEqual([f.startDeg, f.endDeg, f.wraps], [0, 90, false]);
+  assert.equal(f.widthDeg, 90);
+  assert.equal(r.best.deg, 45);
+});
+
+test('computeSeamAvoidance: 真正跨零的可行段保留 wraps 语义', () => {
+  // C=400、保护区 [100,300] → 可行段 300mm→100mm（跨零，宽 200mm/180°）
+  const r = computeSeamAvoidance(400, 0, [{ start: 100, end: 300 }]);
+  assert.equal(r.feasible.length, 1);
+  const f = r.feasible[0];
+  assert.deepEqual([f.startMm, f.endMm, f.wraps], [300, 100, true]);
+  assert.equal(f.widthMm, 200);
+  assert.equal(f.widthDeg, 180);
+  // 跨零段中点落在 0°
+  assert.equal(r.best.deg, 0);
 });

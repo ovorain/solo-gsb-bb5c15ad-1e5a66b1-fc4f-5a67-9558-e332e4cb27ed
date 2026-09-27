@@ -96,6 +96,57 @@ function computeGaps(merged, C) {
 }
 
 /**
+ * 线性化空隙 [s, e]（s∈[0,C]，e∈(s, s+C]）转圆周可行弧。
+ * 统一 0°/360° 边界表示，与多规格接口（toCircularArcs）一致：
+ *  - 整圈（宽 C）：{full:true, startDeg:0, endDeg:0, wraps:false}；
+ *  - 正向弧在 C 处结束（e≈C，不跨零）：endDeg 取 360、wraps:false；
+ *  - 真正跨过零点（e>C）：endDeg 取 e−C、wraps:true；
+ *  - 其余：普通不跨零弧。
+ */
+function gapToFeasible(s, e, C) {
+  const width = e - s;
+  if (width >= C - EPS) {
+    return {
+      startMm: 0,
+      endMm: 0,
+      startDeg: 0,
+      endDeg: 0,
+      widthMm: C,
+      widthDeg: DEG_FULL,
+      wraps: false,
+      full: true,
+    };
+  }
+  const startMm = mod(s, C);
+  const startDeg = mmToDeg(startMm, C);
+  if (e > C + EPS && startMm > EPS) {
+    // 真正跨零：起点在圆内、末端落在零点之后
+    const endMm = e - C;
+    return {
+      startMm,
+      endMm,
+      startDeg,
+      endDeg: mmToDeg(endMm, C),
+      widthMm: width,
+      widthDeg: mmToDeg(width, C),
+      wraps: true,
+    };
+  }
+  // 起点恰在零点（s≈C 的提升副本）时不标跨零：平移为 [0, …]；
+  // 末端恰好落在整圈边界时用 C/360° 表示，禁止再模回 0 而误判为反向短弧
+  const endMm = e > C + EPS ? e - C : e >= C - EPS ? C : e;
+  return {
+    startMm,
+    endMm,
+    startDeg,
+    endDeg: mmToDeg(endMm, C),
+    widthMm: width,
+    widthDeg: mmToDeg(width, C),
+    wraps: false,
+  };
+}
+
+/**
  * 主入口。
  * @param {number} C 周长 (mm)，> 0
  * @param {number} W 接缝安全宽度 (mm)，>= 0
@@ -120,19 +171,7 @@ function computeSeamAvoidance(C, W, zones, detentsOpt, routeOpt) {
   const gaps = computeGaps(merged, C);
   const noSolution = gaps.length === 0;
 
-  const feasible = gaps.map(([s, e]) => {
-    const startMm = mod(s, C);
-    const endMm = mod(e, C);
-    return {
-      startMm,
-      endMm,
-      startDeg: mmToDeg(startMm, C),
-      endDeg: mmToDeg(endMm, C),
-      widthMm: e - s,
-      widthDeg: mmToDeg(e - s, C),
-      wraps: e > C + EPS,
-    };
-  });
+  const feasible = gaps.map(([s, e]) => gapToFeasible(s, e, C));
 
   // 默认选择：段宽最大者的中点；并列取模 C 后角度最小者
   let best = null;
@@ -206,6 +245,7 @@ function computeSeamAvoidance(C, W, zones, detentsOpt, routeOpt) {
       endDeg: f.endDeg,
       wraps: f.wraps,
       widthDeg: f.widthDeg,
+      full: !!f.full,
     }));
     route = planRoute(
       routeOpt.fromDeg,
@@ -243,5 +283,6 @@ module.exports = {
   forbiddenPieces,
   mergeIntervals,
   computeGaps,
+  gapToFeasible,
   computeSeamAvoidance,
 };

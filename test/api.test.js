@@ -67,6 +67,29 @@ test('单规格：合法档位参数返回档位结果', async () => {
   assert.ok(typeof r.json.best.detentIndex === 'number');
 });
 
+test('单规格：可行段结束在整圈边界时 endDeg=360 且不误报无可用档位', async () => {
+  // 题设：周长 360、接缝宽 0、保护区 [0,90] → 安全段 90°→360°
+  const r = await postJson('/api/compute', {
+    circumference: 360,
+    seamWidth: 0,
+    zones: [{ start: 0, end: 90 }],
+    detents: { enabled: true, steps: 12 },
+  });
+  assert.equal(r.status, 200);
+  assert.equal(r.json.noSolution, false);
+  assert.equal(r.json.feasible.length, 1);
+  assert.deepEqual(
+    [r.json.feasible[0].startDeg, r.json.feasible[0].endDeg, r.json.feasible[0].wraps],
+    [90, 360, false]
+  );
+  assert.equal(r.json.detents.noAvailable, false);
+  assert.deepEqual(
+    r.json.detents.available.map((d) => d.deg),
+    [0, 90, 120, 150, 180, 210, 240, 270, 300, 330]
+  );
+  assert.equal(r.json.best.deg, 210);
+});
+
 test('单规格：steps 越界/非整数/非数字 → 400', async () => {
   for (const steps of [1, 361, 12.5, '12', NaN]) {
     const r = await postJson('/api/compute', {
