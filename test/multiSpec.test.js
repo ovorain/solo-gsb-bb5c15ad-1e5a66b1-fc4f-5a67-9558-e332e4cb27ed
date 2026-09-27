@@ -161,6 +161,30 @@ test('computeMultiSpec: 公共段等宽并列时默认点取较小角度', () =>
   approx(r.best.minGapDeg, 45);
 });
 
+test('computeMultiSpec: 公共段恰结束在整圈边界时末端为 360°，与单规格表示一致', () => {
+  // C=360, W=0，保护区 [0,90] → 可行/共用段 90°→360°（不跨零，末端即接缝点）
+  const single = computeSeamAvoidance(360, 0, [{ start: 0, end: 90 }]);
+  assert.deepEqual(
+    single.feasible.map((f) => [f.startDeg, f.endDeg, f.wraps]),
+    [[90, 360, false]]
+  );
+
+  const r = computeMultiSpec([360, 360], 0, [{ start: 0, end: 90 }]);
+  assert.equal(r.noSolution, false);
+  assert.deepEqual(
+    r.common.map((a) => [a.startDeg, a.endDeg, a.wraps]),
+    [[90, 360, false]]
+  );
+  // 单规格 feasible 与多规格 common 表示完全一致
+  assert.deepEqual(
+    r.specs[0].result.feasible.map((f) => [f.startDeg, f.endDeg, f.wraps, f.widthDeg]),
+    single.feasible.map((f) => [f.startDeg, f.endDeg, f.wraps, f.widthDeg])
+  );
+  // 默认角度同为最宽段中点 225°
+  assert.equal(r.best.deg, 225);
+  assert.equal(single.best.deg, 225);
+});
+
 test('computeMultiSpec: 所有规格均无禁用区时整圈公共、默认 0°', () => {
   const r = computeMultiSpec([400, 200], 0, []);
   assert.equal(r.fullCircle, true);

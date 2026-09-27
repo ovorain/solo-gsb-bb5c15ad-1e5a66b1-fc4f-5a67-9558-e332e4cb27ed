@@ -258,3 +258,44 @@ test('computeMultiSpec + route + 档位：两端须落在可用档位', () => {
   const off = computeMultiSpec([360, 360], 0, zones, det, { fromDeg: 210, toDeg: 45.5 });
   assert.equal(off.route.status, 'off-detent');
 });
+
+test('computeSeamAvoidance + route: 可行段恰好结束在 0°/360° 时接缝点端点可用', () => {
+  // C=360 W=0，保护区 [0,90] → 可行段 90°→360°
+  const zones = [{ start: 0, end: 90 }];
+
+  // 无档位：210 → 360（接缝点）顺时针 150°，端点安全
+  const r = computeSeamAvoidance(360, 0, zones, undefined, { fromDeg: 210, toDeg: 360 });
+  assert.equal(r.route.status, 'ok');
+  assert.equal(r.route.toDeg, 0); // 角度按整圈归一展示
+  assert.equal(r.route.to.safe, true);
+  assert.equal(r.route.best.direction, 'cw');
+  approx(r.route.best.sweepDeg, 150);
+
+  // 逆时针越界：210 → 300 段内可达；360 → 45 进入禁用区，端点不安全
+  const bad = computeSeamAvoidance(360, 0, zones, undefined, { fromDeg: 210, toDeg: 45 });
+  assert.equal(bad.route.status, 'unsafe-endpoint');
+
+  // 启用 12 档：360°≡0° 是第 1 档（index 0），210 是第 8 档（index 7），可达
+  const det = { enabled: true, steps: 12 };
+  const rd = computeSeamAvoidance(360, 0, zones, det, { fromDeg: 210, toDeg: 0 });
+  assert.equal(rd.route.status, 'ok');
+  assert.equal(rd.route.from.onDetent, true);
+  assert.equal(rd.route.to.onDetent, true);
+  assert.equal(rd.route.to.detentIndex, 0);
+  approx(rd.route.best.sweepDeg, 150);
+});
+
+test('computeMultiSpec + route: 共用段恰结束在 0°/360° 时与单规格判定一致', () => {
+  // 两个相同 C=360 规格：共用段 90°→360°
+  const zones = [{ start: 0, end: 90 }];
+  const det = { enabled: true, steps: 12 };
+  const r = computeMultiSpec([360, 360], 0, zones, det, { fromDeg: 210, toDeg: 360 });
+  assert.equal(r.noSolution, false);
+  assert.deepEqual(
+    r.common.map((a) => [a.startDeg, a.endDeg, a.wraps]),
+    [[90, 360, false]]
+  );
+  assert.equal(r.route.status, 'ok');
+  assert.equal(r.route.to.detentIndex, 0);
+  approx(r.route.best.sweepDeg, 150);
+});

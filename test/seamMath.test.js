@@ -145,3 +145,63 @@ test('computeSeamAvoidance: 无保护区时整圈可行，默认 0°', () => {
   assert.equal(r.feasible[0].widthMm, 400);
   assert.equal(r.best.mm, 0);
 });
+
+test('computeSeamAvoidance: 可行段恰好结束在整圈边界时末端表示为 C/360°（不折叠为 0）', () => {
+  // C=360, W=0，保护区 [0,90] → 禁用 [0,90]，可行段 90°→360°（恰好回到接缝点）
+  const r = computeSeamAvoidance(360, 0, [{ start: 0, end: 90 }]);
+  assert.equal(r.noSolution, false);
+  assert.equal(r.feasible.length, 1);
+  const f = r.feasible[0];
+  assert.equal(f.startDeg, 90);
+  assert.equal(f.endDeg, 360); // 不再是 0
+  assert.equal(f.startMm, 90);
+  assert.equal(f.endMm, 360);
+  assert.equal(f.widthDeg, 270);
+  assert.equal(f.wraps, false); // 非跨零：仅末端碰到整圈边界
+  // 默认角度取该段中点 225°
+  assert.equal(r.best.deg, 225);
+  assert.equal(r.best.mm, 225);
+});
+
+test('computeSeamAvoidance: 整圈可行段以 [0,360] 非跨零段表示', () => {
+  const r = computeSeamAvoidance(400, 20, []);
+  const f = r.feasible[0];
+  assert.equal(f.startDeg, 0);
+  assert.equal(f.endDeg, 360);
+  assert.equal(f.endMm, 400);
+  assert.equal(f.wraps, false);
+  assert.equal(f.widthDeg, 360);
+});
+
+test('computeSeamAvoidance: 可行段起点恰在接缝点（0°）时为 [0,e] 非跨零段', () => {
+  // C=360 W=0，保护区 [90,0]（正向长 270mm）→ 禁用 [90,360]，可行段 0°→90°
+  const r = computeSeamAvoidance(360, 0, [{ start: 90, end: 0 }]);
+  assert.equal(r.noSolution, false);
+  assert.equal(r.feasible.length, 1);
+  const f = r.feasible[0];
+  assert.equal(f.startMm, 0);
+  assert.equal(f.endMm, 90);
+  assert.equal(f.startDeg, 0);
+  assert.equal(f.endDeg, 90);
+  assert.equal(f.widthDeg, 90);
+  assert.equal(f.wraps, false); // 起点即接缝点，并非跨零
+  assert.equal(r.best.deg, 45);
+
+  // 接缝宽度 W=10：禁用 [80,360]，可行段 0°→80°
+  const r2 = computeSeamAvoidance(360, 10, [{ start: 90, end: 0 }]);
+  assert.deepEqual(
+    r2.feasible.map((x) => [x.startDeg, x.endDeg, x.wraps]),
+    [[0, 80, false]]
+  );
+});
+
+test('computeSeamAvoidance: 真正跨越 0° 的可行段保持 wraps=true', () => {
+  // C=360 W=0，禁用 [120,240] → 可行段 240°→120°（跨零，两侧均有正长）
+  const r = computeSeamAvoidance(360, 0, [{ start: 120, end: 240 }]);
+  assert.equal(r.feasible.length, 1);
+  const f = r.feasible[0];
+  assert.equal(f.startDeg, 240);
+  assert.equal(f.endDeg, 120);
+  assert.equal(f.wraps, true);
+  assert.equal(f.widthDeg, 240);
+});

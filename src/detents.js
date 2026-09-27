@@ -104,10 +104,14 @@ function arcsToFeasiblePieces(arcs) {
   for (const a of arcs || []) {
     if (a.full) return [[0, FULL]];
     const s = mod(a.startDeg, FULL);
-    const e = a.wraps ? a.endDeg + FULL : a.endDeg;
-    const width = a.widthDeg !== undefined ? a.widthDeg : e - s;
+    // 提升坐标下的末端统一由“起点 + 弧宽”推出：跨零弧的 endDeg 落在 [0,FULL)，
+    // 直接 +FULL 仅在起点为 0 时成立；末端恰为整圈边界（endDeg=360）的非跨零弧
+    // 也由此保持为 [s,FULL] 线性片段，与多规格圆周区间表示一致。
+    const width = a.widthDeg !== undefined ? a.widthDeg
+      : (a.wraps ? a.endDeg + FULL : a.endDeg) - s;
     if (width <= EPS) continue;
     if (width >= FULL - EPS) return [[0, FULL]];
+    const e = s + width;
     if (e >= FULL - EPS) {
       if (FULL - s > EPS) pieces.push([s, FULL]);
       if (e - FULL > EPS) pieces.push([0, e - FULL]);

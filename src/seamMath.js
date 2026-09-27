@@ -8,6 +8,10 @@
  * 旋转量为 θ (mm, 0 <= θ < C)，表示接缝起点落在周向 θ 处，
  * 接缝占据 [θ, θ+W] (mod C)。接缝与任一保护区相交的 θ 即禁用。
  * 因此对保护区段 [a, b]，禁用区间为 [a-W, b] (mod C)。
+ *
+ * 可行段输出统一 0°/360° 圆周区间表示（与多规格接口一致）：非跨零段
+ * [s,e] 末端恰为接缝点时保留 e=C（即 endDeg=360，不折叠成 0）；起点恰为
+ * 接缝点的非跨零段为 [0,e]；真正跨零（两侧均有正长）才 wraps=true；整圈为 [0,C]。
  */
 
 const EPS = 1e-9;
@@ -120,17 +124,47 @@ function computeSeamAvoidance(C, W, zones, detentsOpt, routeOpt) {
   const gaps = computeGaps(merged, C);
   const noSolution = gaps.length === 0;
 
+  // 统一 0°/360° 圆周区间表示（与多规格 toCircularArcs 输出一致）：
+  //   · 整圈段：[0,C]，wraps=false（宽 C）；
+  //   · 非跨零段：[s,e]，wraps=false；末端恰好回到接缝点（e≡C）时末端保留为
+  //     C（即 360°），不折叠成 0——否则 end=0 且 wraps=false 会被下游误判为零宽弧；
+  //   · 起点恰为接缝点（s≡0）并沿正向延伸的段同样不跨零：[0,e−C]，wraps=false；
+  //   · 只有同时落在接缝两侧（[s,C]∪[0,e−C]，0<s 且 e−C>0）才标记 wraps=true。
   const feasible = gaps.map(([s, e]) => {
-    const startMm = mod(s, C);
-    const endMm = mod(e, C);
+    const width = e - s;
+    let startMm;
+    let endMm;
+    let wraps;
+    if (width >= C - EPS) {
+      startMm = 0;
+      endMm = C;
+      wraps = false;
+    } else if (e <= C + EPS) {
+      startMm = s;
+      endMm = e >= C - EPS ? C : e;
+      wraps = false;
+    } else if (s <= EPS) {
+      startMm = 0;
+      endMm = e - C;
+      wraps = false;
+    } else if (s >= C - EPS) {
+      // 空隙起点即上一禁用段末端、恰为接缝点（[C,C+w]）：等价于自 0 正向延伸
+      startMm = 0;
+      endMm = e - C;
+      wraps = false;
+    } else {
+      startMm = s;
+      endMm = e - C;
+      wraps = true;
+    }
     return {
       startMm,
       endMm,
       startDeg: mmToDeg(startMm, C),
       endDeg: mmToDeg(endMm, C),
-      widthMm: e - s,
-      widthDeg: mmToDeg(e - s, C),
-      wraps: e > C + EPS,
+      widthMm: width,
+      widthDeg: mmToDeg(width, C),
+      wraps,
     };
   });
 

@@ -83,6 +83,10 @@ test('arcsToFeasiblePieces: 跨零弧拆分，整圈弧归一', () => {
   assert.deepEqual(arcsToFeasiblePieces([{ startDeg: 30, endDeg: 90, wraps: false }]), [
     [30, 90],
   ]);
+  // 末端恰为整圈边界（360）的非跨零弧保持为 [s,360]，不折叠成零宽
+  assert.deepEqual(arcsToFeasiblePieces([{ startDeg: 90, endDeg: 360, wraps: false }]), [
+    [90, 360],
+  ]);
   assert.deepEqual(arcsToFeasiblePieces([{ full: true }]), [[0, 360]]);
 });
 
@@ -247,6 +251,27 @@ test('computeSeamAvoidance + 档位：连续有解但无可用档位区别于覆
   approx(r.detents.nearest[0].after.distanceDeg, 12.6);
 });
 
+test('computeSeamAvoidance + 档位：安全段恰好结束在整圈边界时不误报无可用档位', () => {
+  // C=360, W=0，保护区 [0,90] → 可行段 90°→360°（宽 270°，末端恰为整圈边界）
+  // 12 档：0/30/.../330，段内（含边界）可用档位为 0 与 90..330 共 10 档
+  const r = computeSeamAvoidance(360, 0, [{ start: 0, end: 90 }], {
+    enabled: true,
+    steps: 12,
+  });
+  assert.equal(r.noSolution, false);
+  assert.equal(r.detents.noAvailable, false);
+  assert.deepEqual(
+    r.detents.available.map((d) => d.deg),
+    [0, 90, 120, 150, 180, 210, 240, 270, 300, 330]
+  );
+  assert.deepEqual(r.detents.nearest, []);
+  // 默认档位为瓶颈间隙最大的段中点档位 210（距 90/0 两界均 120°）
+  assert.equal(r.detents.best.deg, 210);
+  approx(r.detents.best.gapDeg, 120);
+  assert.equal(r.best.deg, 210);
+  assert.equal(r.best.detentIndex, 7);
+});
+
 test('computeSeamAvoidance + 档位：保护区覆盖整圈时不报告“无可用档位”', () => {
   const r = computeSeamAvoidance(400, 50, [
     { start: 0, end: 180 },
@@ -258,7 +283,6 @@ test('computeSeamAvoidance + 档位：保护区覆盖整圈时不报告“无可
   assert.equal(r.detents.noAvailable, false);
   assert.deepEqual(r.detents.nearest, []);
 });
-
 test('computeSeamAvoidance + 档位：无禁用区时全部档位可用，默认偏移后的最小档', () => {
   const r = computeSeamAvoidance(400, 0, [], {
     enabled: true,
